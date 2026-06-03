@@ -1,0 +1,85 @@
+name: Garmin to iGPSPORT Route Sync
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max routes to fetch"
+        required: false
+        default: "50"
+      dry_run:
+        description: "Run without uploading"
+        required: false
+        type: boolean
+        default: false
+      log_level:
+        description: "Log level"
+        required: false
+        default: "INFO"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+      GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+      GARMIN_CN: ${{ secrets.GARMIN_CN || 'False' }}
+      IGPSPORT_USERNAME: ${{ secrets.IGPSPORT_USERNAME }}
+      IGPSPORT_PASSWORD: ${{ secrets.IGPSPORT_PASSWORD }}
+      IGPSPORT_DOMAIN: ${{ secrets.IGPSPORT_DOMAIN || 'prod.en.igpsport.com' }}
+      IGPSPORT_REFERER: ${{ secrets.IGPSPORT_REFERER || 'https://login.passport.igpsport.com' }}
+      IGPSPORT_WEB_COOKIE_FILE: .state/igpsport_web_cookies.json
+      LOG_LEVEL: ${{ inputs.log_level || 'INFO' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Restore .state cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .state
+          key: ${{ runner.os }}-g2i-state-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-g2i-state-
+
+      - name: Ensure state directory exists
+        run: mkdir -p .state
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen
+
+      - name: Run sync
+        run: |
+          LIMIT="${{ inputs.limit || '50' }}"
+          DRY_RUN="${{ inputs.dry_run || 'false' }}"
+
+          ARGS=(--limit "$LIMIT" --garmin-session-dir .state/garmin_session --log-level "$LOG_LEVEL")
+          if [[ "$DRY_RUN" == "true" ]]; then
+            ARGS+=(--dry-run)
+          fi
+
+          uv run python main.py "${ARGS[@]}"
+
+      - name: Save .state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state
+          key: ${{ runner.os }}-g2i-state-${{ github.run_id }}
