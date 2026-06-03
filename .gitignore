@@ -1,0 +1,29 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+.pyre/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+
+# Virtual environments
+.venv/
+
+# OS artifacts
+.DS_Store
+
+garmin_session.json
+garmin_session/
+.env
+.env.*
+!.env.sample
+.state/
