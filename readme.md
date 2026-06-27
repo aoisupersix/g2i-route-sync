@@ -1,6 +1,6 @@
 # g2i-route-sync
 
-A Python script that downloads courses from Garmin Connect and uploads them to iGPSPORT roadbooks via API.
+A Dart CLI that downloads courses from Garmin Connect and uploads them to iGPSPORT roadbooks via API.
 
 ## Usage
 
@@ -40,48 +40,57 @@ LOG_LEVEL=INFO
 Install dependencies and run:
 
 ```bash
-uv sync
-uv run python main.py
+dart pub get
+dart run bin/g2i_route_sync.dart
 ```
 
 Useful options:
 
 ```bash
 # Limit number of Garmin routes to fetch
-uv run python main.py --limit 20
+dart run bin/g2i_route_sync.dart --limit 20
 
 # Check targets without uploading
-uv run python main.py --dry-run
+dart run bin/g2i_route_sync.dart --dry-run
 
 # Deprecated option (accepted but ignored)
-uv run python main.py --state-file .state/sync_state.json
+dart run bin/g2i_route_sync.dart --state-file .state/sync_state.json
 ```
 
-Run the tests, linter, and type checker:
+Run the tests, analyzer, and formatter:
 
 ```bash
-uv run pytest
-uv run ruff check .
-uv run ty check
+dart test
+dart analyze
+dart format --output none --set-exit-if-changed .
+```
+
+Build a standalone executable:
+
+```bash
+dart compile exe bin/g2i_route_sync.dart -o g2i-route-sync
 ```
 
 ## Project structure
 
-The CLI entrypoint is `main.py`, a thin wrapper around the `g2i_route_sync` package:
+The CLI entrypoint is `bin/g2i_route_sync.dart`, a thin wrapper around the `g2i_route_sync` library:
 
 | Module | Responsibility |
 | --- | --- |
-| `g2i_route_sync/config.py` | Constants and `AppConfig` loaded from environment variables |
-| `g2i_route_sync/models.py` | `RouteSummary` / `RoadBookSummary` data models |
-| `g2i_route_sync/jsonutil.py` | Case-insensitive JSON access helpers |
-| `g2i_route_sync/gpx.py` | GPX building and file-format detection |
-| `g2i_route_sync/poi.py` | POI types, mapping, and GPX extraction |
-| `g2i_route_sync/garmin.py` | `GarminRouteClient` (route listing and download) |
-| `g2i_route_sync/igpsport.py` | `IGPSportClient` (upload, roadbooks, POI, privacy) |
-| `g2i_route_sync/sync.py` | Route ordering and the sync orchestration |
-| `g2i_route_sync/cli.py` | Argument parsing and `main()` |
+| `lib/config.dart` | Constants and `AppConfig` loaded from environment variables |
+| `lib/models.dart` | `RouteSummary` / `RoadBookSummary` data models |
+| `lib/json_util.dart` | Case-insensitive JSON access helpers |
+| `lib/logging.dart` | Minimal leveled logger |
+| `lib/gpx.dart` | GPX building and file-format detection |
+| `lib/poi.dart` | POI types, mapping, and GPX extraction |
+| `lib/http_session.dart` | Cookie-aware HTTP session (the `requests.Session` equivalent) |
+| `lib/garmin_client.dart` | Garmin Connect authentication engine (port of `garminconnect`) |
+| `lib/garmin_route_client.dart` | `GarminRouteClient` (route listing and download) |
+| `lib/igpsport_client.dart` | `IgpsportClient` (upload, roadbooks, POI, privacy) |
+| `lib/sync.dart` | Route ordering and the sync orchestration |
+| `lib/cli.dart` | Argument parsing and `run()` |
 
-Tests for the pure helpers (no network) live under `tests/`.
+Tests for the pure helpers (no network) live under `test/`.
 
 ## Required Environment Variables
 
@@ -105,6 +114,21 @@ You must set the following values:
 - Duplicate handling:
   - No local upload history file is used.
   - Each run compares against current iGPSPORT roadbooks and skips routes with the same title.
+
+## Garmin authentication
+
+`lib/garmin_client.dart` is a Dart reimplementation of the `garminconnect`
+authentication flow. It tries three login strategies in order until one
+succeeds — mobile iOS login, the SSO embed widget, and the portal web login —
+then exchanges the resulting CAS service ticket for a DI OAuth2 bearer token
+(with a JWT_WEB cookie fallback). Tokens are cached under the
+`--garmin-session-dir` directory (`garmin_tokens.json`) and refreshed
+automatically when they are about to expire.
+
+The original Python relied on `curl_cffi` for TLS-fingerprint impersonation to
+dodge Cloudflare rate limits; that is not available in Dart, so the strategies
+run as plain HTTPS requests. Cached tokens are therefore the primary path for
+unattended/CI runs.
 
 ## Notes
 

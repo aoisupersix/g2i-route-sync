@@ -1,0 +1,20 @@
+name: g2i_route_sync
+description: Sync Garmin Connect routes to iGPSPORT roadbooks via API (Dart port).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  args: ^2.6.0
+  dotenv: ^4.2.0
+  mime: ^2.0.0
+  xml: ^6.5.0
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0
+
+executables:
+  g2i-route-sync: g2i_route_sync
