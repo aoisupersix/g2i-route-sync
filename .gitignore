@@ -1,26 +1,13 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
+# Dart / Pub
+.dart_tool/
+.packages
 build/
-dist/
-wheels/
-*.egg-info/
-.ruff_cache/
-.pytest_cache/
-.mypy_cache/
-.hypothesis/
-.pyre/
-.coverage
-.coverage.*
-htmlcov/
-.cache/
-
-# Virtual environments
-.venv/
+doc/api/
 
 # OS artifacts
 .DS_Store
 
+# Runtime state and secrets
 garmin_session.json
 garmin_session/
 .env
