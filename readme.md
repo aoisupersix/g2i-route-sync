@@ -21,7 +21,7 @@ GARMIN_CN=False
 IGPSPORT_DOMAIN=prod.en.igpsport.com
 IGPSPORT_REFERER=https://login.passport.igpsport.com
 
-# Override Garmin route API endpoints (single endpoint)
+# Override Garmin route API endpoints
 GARMIN_ROUTE_LIST_ENDPOINT=/course-service/course
 GARMIN_ROUTE_DOWNLOAD_ENDPOINT=/download-service/export/gpx/course/{route_id}
 
@@ -57,6 +57,32 @@ uv run python main.py --dry-run
 uv run python main.py --state-file .state/sync_state.json
 ```
 
+Run the tests, linter, and type checker:
+
+```bash
+uv run pytest
+uv run ruff check .
+uv run ty check
+```
+
+## Project structure
+
+The CLI entrypoint is `main.py`, a thin wrapper around the `g2i_route_sync` package:
+
+| Module | Responsibility |
+| --- | --- |
+| `g2i_route_sync/config.py` | Constants and `AppConfig` loaded from environment variables |
+| `g2i_route_sync/models.py` | `RouteSummary` / `RoadBookSummary` data models |
+| `g2i_route_sync/jsonutil.py` | Case-insensitive JSON access helpers |
+| `g2i_route_sync/gpx.py` | GPX building and file-format detection |
+| `g2i_route_sync/poi.py` | POI types, mapping, and GPX extraction |
+| `g2i_route_sync/garmin.py` | `GarminRouteClient` (route listing and download) |
+| `g2i_route_sync/igpsport.py` | `IGPSportClient` (upload, roadbooks, POI, privacy) |
+| `g2i_route_sync/sync.py` | Route ordering and the sync orchestration |
+| `g2i_route_sync/cli.py` | Argument parsing and `main()` |
+
+Tests for the pure helpers (no network) live under `tests/`.
+
 ## Required Environment Variables
 
 You must set the following values:
@@ -83,7 +109,6 @@ You must set the following values:
 ## Notes
 
 - iGPSPORT APIs are not fully documented publicly, and behavior may vary by account or region.
-- If needed, override endpoint candidates with `IGPSPORT_ROUTE_UPLOAD_ENDPOINTS`.
 - Web upload is fixed to `/Routes/uploadroad`.
 - Web cookies are automatically refreshed via `/Auth/Login` and reused from `IGPSPORT_WEB_COOKIE_FILE`.
 - Use `--dry-run` with `LOG_LEVEL=DEBUG` for troubleshooting.
