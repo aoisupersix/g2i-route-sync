@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 import gpxpy
+import gpxpy.gpx
 
 LOGGER = logging.getLogger("g2i-route-sync")
 
@@ -124,7 +125,7 @@ def extract_pois_from_gpx_bytes(
 ) -> list[POICandidate]:
     try:
         gpx = gpxpy.parse(gpx_bytes.decode("utf-8", errors="replace"))
-    except Exception as exc:  # noqa: BLE001
+    except gpxpy.gpx.GPXException as exc:
         LOGGER.debug("Failed to parse GPX for POI extraction: %s", exc)
         return []
 

@@ -133,7 +133,7 @@ class IGPSportClient:
                 payload = response.json()
                 items = self._extract_roadlist_items(payload)
                 total = self._extract_roadlist_total(payload)
-            except Exception as exc:  # noqa: BLE001
+            except (requests.RequestException, ValueError, RuntimeError) as exc:
                 debug = self._format_response_debug(response)
                 LOGGER.error("Failed to load RoadList: %s", debug)
                 raise RuntimeError(f"Failed to load RoadList: {debug}") from exc
@@ -187,7 +187,7 @@ class IGPSportClient:
         if isinstance(payload, str):
             try:
                 payload = json.loads(payload)
-            except Exception as exc:  # noqa: BLE001
+            except json.JSONDecodeError as exc:
                 raise RuntimeError("RoadList payload is not valid JSON string") from exc
 
         if isinstance(payload, list):
@@ -248,7 +248,7 @@ class IGPSportClient:
         if isinstance(payload, str):
             try:
                 payload = json.loads(payload)
-            except Exception:  # noqa: BLE001
+            except json.JSONDecodeError:
                 return None
 
         if not isinstance(payload, dict):
@@ -392,12 +392,12 @@ class IGPSportClient:
         body_text = response.text[:500]
         try:
             response.raise_for_status()
-        except Exception as exc:  # noqa: BLE001
+        except requests.HTTPError as exc:
             return False, f"http_error={exc} body={body_text}"
 
         try:
             payload = response.json()
-        except Exception:  # noqa: BLE001
+        except (ValueError, requests.exceptions.JSONDecodeError):
             payload = None
 
         if isinstance(payload, dict):
@@ -466,7 +466,7 @@ class IGPSportClient:
             return
         try:
             cookie_map = json.loads(self._web_cookie_file.read_text(encoding="utf-8"))
-        except Exception:  # noqa: BLE001
+        except (OSError, json.JSONDecodeError):
             return
         if not isinstance(cookie_map, dict):
             return
