@@ -179,8 +179,11 @@ def run_sync(config: AppConfig, *, limit: int, dry_run: bool, session_dir: str) 
                     len(poi_candidates),
                 )
 
+        # Broad on purpose: this is the per-route boundary — one bad route must
+        # not abort the whole run. The traceback is logged for diagnosis.
         except Exception as exc:  # noqa: BLE001
             LOGGER.error("Failed route id=%s error=%s", route.route_id, exc)
+            LOGGER.debug("Route failure traceback id=%s", route.route_id, exc_info=exc)
             failed += 1
 
     LOGGER.info("Sync done. uploaded=%d skipped=%d failed=%d", synced, skipped, failed)

@@ -60,6 +60,8 @@ class GarminRouteClient:
                         self._list_endpoint,
                     )
                     return routes[:limit]
+            # Broad on purpose: the param shape that works varies by account, so
+            # any failure here just means "try the next candidate".
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 LOGGER.debug(
@@ -82,6 +84,8 @@ class GarminRouteClient:
             try:
                 content = self._garmin.download(direct_url)
                 return content, infer_extension(content, direct_url)
+            # Broad on purpose: any download failure (404, auth, network) should
+            # fall through to the next download strategy rather than abort.
             except Exception as exc:  # noqa: BLE001
                 LOGGER.debug(
                     "Direct Garmin route download failed route_id=%s url=%s err=%s",
@@ -95,6 +99,7 @@ class GarminRouteClient:
         try:
             content = self._garmin.download(endpoint)
             return content, infer_extension(content, endpoint)
+        # Broad on purpose: fall back to building GPX from the course detail.
         except Exception as exc:  # noqa: BLE001
             last_error = exc
             LOGGER.debug(
