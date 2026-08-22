@@ -25,11 +25,8 @@ IGPSPORT_REFERER=https://login.passport.igpsport.com
 GARMIN_ROUTE_LIST_ENDPOINT=/course-service/course
 GARMIN_ROUTE_DOWNLOAD_ENDPOINT=/download-service/export/gpx/course/{route_id}
 
-# Web cookie file for i.igpsport.com (default: .state/igpsport_web_cookies.json)
-IGPSPORT_WEB_COOKIE_FILE=.state/igpsport_web_cookies.json
-
-# iGPSPORT RoadList page size for initial fetch (default: 1000)
-IGPSPORT_ROADLIST_PAGE_SIZE=1000
+# iGPSPORT RouteListForWeb page size (default: 100)
+IGPSPORT_ROADLIST_PAGE_SIZE=100
 
 # Log level
 LOG_LEVEL=INFO
@@ -107,8 +104,12 @@ You must set the following values:
   - Logs in and fetches route lists from Garmin course APIs.
   - Downloads each route as GPX/TCX/FIT (with fallback behavior when needed).
 - iGPSPORT side:
-  - Logs in via `/auth/account/login`.
-  - Uploads routes through the web upload endpoint.
+  - Logs in via `/auth/account/login` (Bearer token, same API as app.igpsport.com).
+  - Uploads routes via the OSS signed-URL flow: `GET
+    /service/sportg/third-party-server/oss/getSignedUrl` -> `PUT` the file to
+    the signed URL -> `POST /service/web/api/Routes/UploadOssGenerateRoutes`.
+  - Route generation is asynchronous; the sync polls the route list until the
+    uploaded title appears.
   - After upload, sets the route to private.
   - Sends extracted GPX POIs to iGPSPORT auxiliary points.
 - Duplicate handling:
@@ -133,7 +134,8 @@ unattended/CI runs.
 ## Notes
 
 - iGPSPORT APIs are not fully documented publicly, and behavior may vary by account or region.
-- Web upload is fixed to `/Routes/uploadroad`.
-- Web cookies are automatically refreshed via `/Auth/Login` and reused from `IGPSPORT_WEB_COOKIE_FILE`.
+- The legacy `i.igpsport.com` web app was retired in August 2026 (it now
+  redirects to `app.igpsport.com`); everything goes through
+  `https://prod.en.igpsport.com/service` with Bearer auth.
 - Use `--dry-run` with `LOG_LEVEL=DEBUG` for troubleshooting.
-- `.state` is used for runtime/session artifacts (for example, cookies and Garmin session cache), not for route dedup history.
+- `.state` is used for runtime/session artifacts (the Garmin session cache), not for route dedup history.

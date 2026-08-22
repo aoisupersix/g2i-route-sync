@@ -33,7 +33,6 @@ jobs:
       IGPSPORT_PASSWORD: ${{ secrets.IGPSPORT_PASSWORD }}
       IGPSPORT_DOMAIN: ${{ secrets.IGPSPORT_DOMAIN || 'prod.en.igpsport.com' }}
       IGPSPORT_REFERER: ${{ secrets.IGPSPORT_REFERER || 'https://login.passport.igpsport.com' }}
-      IGPSPORT_WEB_COOKIE_FILE: .state/igpsport_web_cookies.json
       LOG_LEVEL: ${{ inputs.log_level || 'INFO' }}
 
     steps:

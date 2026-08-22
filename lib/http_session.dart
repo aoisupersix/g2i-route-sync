@@ -162,7 +162,12 @@ class HttpSession {
       final cookieHeader = _cookieHeader();
       if (cookieHeader.isNotEmpty) req.headers.set('cookie', cookieHeader);
 
-      if (currentPayload != null) req.add(currentPayload);
+      if (currentPayload != null) {
+        // Explicit length avoids chunked transfer encoding, which some
+        // endpoints (e.g. OSS signed-URL PUT) reject with 411.
+        req.contentLength = currentPayload.length;
+        req.add(currentPayload);
+      }
 
       final resp = await req.close().timeout(effectiveTimeout);
       _storeCookies(resp.cookies);
