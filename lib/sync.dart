@@ -77,7 +77,6 @@ Future<int> runSync(
     password: config.igpsportPassword,
     domain: config.igpsportDomain,
     referer: config.igpsportReferer,
-    webCookieFile: config.webCookieFile,
     roadlistPageSize: config.roadlistPageSize,
   );
 
@@ -140,11 +139,19 @@ Future<int> runSync(
         skipped++;
       } else {
         await igpsport.uploadRoute(route.name, filename, routeBytes);
-        final refreshed = await igpsport.getMyRoadbooks();
-        titleToRoadbookId = {
-          for (final rb in refreshed) rb.title: rb.roadbookId,
-        };
-        targetRoadbookId = titleToRoadbookId[normalizedTitle];
+        // Route generation from the uploaded file is asynchronous on the
+        // iGPSPORT side, so poll until the roadbook shows up by title.
+        const pollAttempts = 12;
+        const pollDelay = Duration(seconds: 5);
+        for (var attempt = 0; attempt < pollAttempts; attempt++) {
+          await Future<void>.delayed(pollDelay);
+          final refreshed = await igpsport.getMyRoadbooks();
+          titleToRoadbookId = {
+            for (final rb in refreshed) rb.title: rb.roadbookId,
+          };
+          targetRoadbookId = titleToRoadbookId[normalizedTitle];
+          if (targetRoadbookId != null) break;
+        }
         if (targetRoadbookId == null) {
           throw StateError(
             'Route uploaded but could not resolve iGPSPORT roadbook ID by title',

@@ -9,15 +9,10 @@ const browserUserAgent =
 
 const defaultIgpsportDomain = 'prod.en.igpsport.com';
 const defaultIgpsportReferer = 'https://login.passport.igpsport.com';
-const defaultIgpsportWebBaseUrl = 'https://i.igpsport.com';
-const defaultIgpsportWebLoginPath = '/Auth/Login';
-const defaultIgpsportWebUploadUrl = 'https://i.igpsport.com/Routes/uploadroad';
-const defaultIgpsportWebReferer = 'https://i.igpsport.com/explorer/upload';
-const defaultIgpsportWebRoadlistUrl = 'https://i.igpsport.com/Routes/RoadList';
-const defaultIgpsportWebRoadlistReferer =
-    'https://i.igpsport.com/explorer/road?lang=ja';
-const defaultIgpsportRoadlistPageSize = 1000;
-const defaultIgpsportWebCookieFile = '.state/igpsport_web_cookies.json';
+
+/// `Qiwu-App-Version` header sent by app.igpsport.com's web client.
+const igpsportWebAppVersion = '7.07.08';
+const defaultIgpsportRoadlistPageSize = 100;
 const defaultGarminRouteListEndpoint = '/course-service/course';
 const defaultGarminRouteDownloadEndpoint =
     '/download-service/export/gpx/course/{route_id}';
@@ -51,7 +46,6 @@ class AppConfig {
   final String igpsportReferer;
   final String routeListEndpoint;
   final String routeDownloadEndpoint;
-  final String webCookieFile;
   final int roadlistPageSize;
 
   const AppConfig({
@@ -64,7 +58,6 @@ class AppConfig {
     required this.igpsportReferer,
     required this.routeListEndpoint,
     required this.routeDownloadEndpoint,
-    required this.webCookieFile,
     required this.roadlistPageSize,
   });
 
@@ -87,8 +80,6 @@ class AppConfig {
         'GARMIN_ROUTE_DOWNLOAD_ENDPOINT',
         defaultGarminRouteDownloadEndpoint,
       ),
-      webCookieFile:
-          env('IGPSPORT_WEB_COOKIE_FILE') ?? defaultIgpsportWebCookieFile,
       roadlistPageSize:
           int.tryParse(env('IGPSPORT_ROADLIST_PAGE_SIZE') ?? '') ??
           defaultIgpsportRoadlistPageSize,

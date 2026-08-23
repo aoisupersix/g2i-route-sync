@@ -2,9 +2,6 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
-
-import 'package:mime/mime.dart';
 
 import 'config.dart';
 import 'http_session.dart';
@@ -13,49 +10,33 @@ import 'logging.dart';
 import 'models.dart';
 import 'poi.dart';
 
-const _roadlistHeaders = {
-  'accept': '*/*',
-  'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
-  'x-requested-with': 'XMLHttpRequest',
-  'referer': defaultIgpsportWebRoadlistReferer,
-  'sec-fetch-dest': 'empty',
-  'sec-fetch-mode': 'cors',
-  'sec-fetch-site': 'same-origin',
-};
-
 class IgpsportClient {
   final String username;
   final String password;
   final String domain;
-  final File _webCookieFile;
   final int roadlistPageSize;
   final HttpSession _session;
-  final HttpSession _webSession;
+
+  /// Plain session for OSS signed-URL uploads. The signed URL carries the
+  /// signature in its query string; extra authorization/cookie headers or a
+  /// content-type not covered by the signature would invalidate it.
+  final HttpSession _ossSession = HttpSession();
 
   IgpsportClient({
     required this.username,
     required this.password,
     required this.domain,
     required String referer,
-    String webCookieFile = defaultIgpsportWebCookieFile,
     int roadlistPageSize = defaultIgpsportRoadlistPageSize,
-  }) : _webCookieFile = File(webCookieFile),
-       roadlistPageSize = roadlistPageSize < 1 ? 1 : roadlistPageSize,
+  }) : roadlistPageSize = roadlistPageSize < 1 ? 1 : roadlistPageSize,
        _session = HttpSession(
          headers: {
            'user-agent': browserUserAgent,
            'accept': 'application/json, text/plain, */*',
            'origin': referer,
            'referer': referer,
-         },
-       ),
-       _webSession = HttpSession(
-         headers: {
-           'user-agent': browserUserAgent,
-           'accept': '*/*',
-           'x-requested-with': 'XMLHttpRequest',
-           'origin': defaultIgpsportWebBaseUrl,
-           'referer': defaultIgpsportWebReferer,
+           'x-platform': 'web',
+           'qiwu-app-version': igpsportWebAppVersion,
          },
        );
 
@@ -89,38 +70,100 @@ class IgpsportClient {
     logInfo('Authenticated to iGPSPORT');
   }
 
+  /// Upload a route file through the OSS signed-URL flow used by
+  /// app.igpsport.com: request a signed URL, PUT the raw bytes to OSS, then
+  /// ask the API to generate a route from the uploaded file.
+  ///
+  /// Route generation is asynchronous on the server; the new roadbook may take
+  /// a while to appear in [getMyRoadbooks] after this returns.
   Future<void> uploadRoute(
     String routeName,
     String filename,
     List<int> content,
-  ) => _uploadRouteViaWeb(routeName, filename, content);
+  ) async {
+    final dotIndex = filename.lastIndexOf('.');
+    final fileExtension = dotIndex >= 0 ? filename.substring(dotIndex) : '.gpx';
+
+    final signedResponse = await _session.get(
+      Uri.parse('$_baseUrl/sportg/third-party-server/oss/getSignedUrl'),
+      params: {'fileExtension': fileExtension},
+      timeout: const Duration(seconds: 30),
+    );
+    final signedData = _requireApiData(signedResponse, what: 'OSS signed URL');
+    final signedUrl = jsonGetCi(signedData, 'signedUrl');
+    final ossId = jsonGetCi(signedData, 'ossId');
+    if (signedUrl is! String || signedUrl.isEmpty || ossId == null) {
+      throw StateError(
+        'OSS signed URL response missing signedUrl/ossId: $signedData',
+      );
+    }
+
+    final ossResponse = await _ossSession.request(
+      'PUT',
+      Uri.parse(signedUrl),
+      bodyBytes: content,
+      timeout: const Duration(seconds: 120),
+    );
+    if (!ossResponse.ok) {
+      throw StateError(
+        'OSS upload failed: ${_formatResponseDebug(ossResponse)}',
+      );
+    }
+
+    final generateResponse = await _session.postJson(
+      Uri.parse('$_baseUrl/web/api/Routes/UploadOssGenerateRoutes'),
+      json: {
+        'fileName': filename,
+        'fileId': ossId,
+        'title': routeName,
+        'description': '',
+      },
+      timeout: const Duration(seconds: 60),
+    );
+    _requireApiData(generateResponse, what: 'UploadOssGenerateRoutes');
+  }
+
+  /// Check an API response for HTTP and `code` success, returning its `data`.
+  dynamic _requireApiData(SessionResponse response, {required String what}) {
+    if (!response.ok) {
+      throw StateError('$what failed: ${_formatResponseDebug(response)}');
+    }
+    dynamic payload;
+    try {
+      payload = response.jsonBody();
+    } catch (_) {
+      throw StateError(
+        '$what returned non-JSON: '
+        '${_formatResponseDebug(response)}',
+      );
+    }
+    final code = jsonGetCi(payload, 'code');
+    if (code != 0 && code != '0') {
+      throw StateError('$what failed: $payload');
+    }
+    return jsonGetCi(payload, 'data');
+  }
 
   Future<SessionResponse> _fetchRoadlistPage(int pageIndex) {
-    return _webSession.get(
-      Uri.parse(defaultIgpsportWebRoadlistUrl),
+    return _session.get(
+      Uri.parse('$_baseUrl/web/api/Routes/RouteListForWeb'),
       params: {
         'type': 'mine',
         'pageSize': '$roadlistPageSize',
         'pageIndex': '$pageIndex',
       },
-      headers: _roadlistHeaders,
       timeout: const Duration(seconds: 30),
     );
   }
 
-  /// Return existing roadbooks from iGPSPORT web RoadList API.
+  /// Return existing roadbooks from the iGPSPORT RouteListForWeb API.
   Future<List<RoadBookSummary>> getMyRoadbooks() async {
-    await _restoreWebCookiesFromDisk();
     final pageSize = roadlistPageSize;
     var pageIndex = 1;
     final allItems = <dynamic>[];
 
     while (true) {
-      var response = await _fetchRoadlistPage(pageIndex);
-      if (_looksLikeLoginRequired(response)) {
-        await _webLoginAndPersist();
-        response = await _fetchRoadlistPage(pageIndex);
-      }
+      final response = await _fetchRoadlistPage(pageIndex);
 
       List<dynamic> items;
       int? total;
@@ -133,8 +176,8 @@ class IgpsportClient {
         total = _extractRoadlistTotal(payload);
       } catch (exc) {
         final debug = _formatResponseDebug(response);
-        logError('Failed to load RoadList: $debug');
-        throw StateError('Failed to load RoadList: $debug');
+        logError('Failed to load RouteListForWeb: $debug');
+        throw StateError('Failed to load RouteListForWeb: $debug');
       }
 
       allItems.addAll(items);
@@ -152,7 +195,11 @@ class IgpsportClient {
     final roadbooks = <RoadBookSummary>[];
     for (final item in allItems) {
       if (item is! Map) continue;
-      final roadbookId = jsonGetCi(item, 'roadbookid');
+      final roadbookId =
+          jsonGetCi(item, 'roadBookId') ??
+          jsonGetCi(item, 'ruteId') ??
+          jsonGetCi(item, 'routeId') ??
+          jsonGetCi(item, 'id');
       final title = jsonGetCi(item, 'title');
       if (roadbookId == null || title is! String || title.trim().isEmpty) {
         continue;
@@ -327,161 +374,6 @@ class IgpsportClient {
     final code = result is Map ? jsonGetCi(result, 'code') : null;
     if (result is! Map || (code != 0 && code != '0')) {
       throw StateError('Failed to set iGPSPORT route private: $result');
-    }
-  }
-
-  Future<void> _uploadRouteViaWeb(
-    String routeName,
-    String filename,
-    List<int> content,
-  ) async {
-    await _restoreWebCookiesFromDisk();
-    final contentType = lookupMimeType(filename) ?? 'application/octet-stream';
-    final files = [
-      MultipartFile(
-        field: 'file',
-        filename: filename,
-        bytes: content,
-        contentType: contentType,
-      ),
-    ];
-    final data = {'title': routeName, 'descr': ''};
-
-    final first = await _webSession.request(
-      'POST',
-      Uri.parse(defaultIgpsportWebUploadUrl),
-      formFields: data,
-      files: files,
-      timeout: const Duration(seconds: 60),
-    );
-
-    final (success, reason) = _isWebUploadSuccess(first);
-    if (success) {
-      await _persistWebCookiesToDisk();
-      return;
-    }
-
-    if (_looksLikeLoginRequired(first) || reason.isNotEmpty) {
-      await _webLoginAndPersist();
-      final second = await _webSession.request(
-        'POST',
-        Uri.parse(defaultIgpsportWebUploadUrl),
-        formFields: data,
-        files: files,
-        timeout: const Duration(seconds: 60),
-      );
-      final (success2, reason2) = _isWebUploadSuccess(second);
-      if (success2) {
-        await _persistWebCookiesToDisk();
-        return;
-      }
-      throw StateError('Web upload failed after re-login: $reason2');
-    }
-    throw StateError('Web upload failed: $reason');
-  }
-
-  (bool, String) _isWebUploadSuccess(SessionResponse response) {
-    final bodyText =
-        response.body.length > 500
-            ? response.body.substring(0, 500)
-            : response.body;
-    if (!response.ok) {
-      return (false, 'http_error=${response.statusCode} body=$bodyText');
-    }
-
-    dynamic payload;
-    try {
-      payload = response.jsonBody();
-    } catch (_) {
-      payload = null;
-    }
-
-    if (payload is Map) {
-      final code = jsonGetCi(payload, 'code');
-      final data = jsonGetCi(payload, 'data');
-
-      if (code == 0 || code == '0') {
-        if (data is String && data.toLowerCase().contains('not_found')) {
-          return (false, 'json_failure=$payload');
-        }
-        if (data == true ||
-            data == null ||
-            data == '' ||
-            data == 1 ||
-            data == '1') {
-          return (true, '');
-        }
-        if (data is String &&
-            {'true', 'ok', 'success'}.contains(data.trim().toLowerCase())) {
-          return (true, '');
-        }
-      }
-      if ({'1', '200', '0'}.contains('${jsonGetCi(payload, 'status')}')) {
-        return (true, '');
-      }
-      if ({
-        'true',
-        '1',
-      }.contains('${jsonGetCi(payload, 'success', '')}'.toLowerCase())) {
-        return (true, '');
-      }
-      return (false, 'json_failure=$payload');
-    }
-
-    final text = bodyText.trim();
-    final lower = text.toLowerCase();
-    if ({'ok', 'success', 'true', '1'}.contains(lower)) return (true, '');
-    final asInt = int.tryParse(text);
-    if (asInt != null && asInt >= 0) return (true, '');
-    return (false, 'plain_failure=$bodyText');
-  }
-
-  bool _looksLikeLoginRequired(SessionResponse response) {
-    if (response.statusCode == 401 || response.statusCode == 403) return true;
-    final lower = response.body.toLowerCase();
-    return lower.contains('auth/login') || lower.contains('please login');
-  }
-
-  Future<void> _webLoginAndPersist() async {
-    final response = await _webSession.postJson(
-      Uri.parse('$defaultIgpsportWebBaseUrl$defaultIgpsportWebLoginPath'),
-      json: {'username': username, 'password': password},
-      timeout: const Duration(seconds: 30),
-    );
-    if (!response.ok) {
-      throw StateError(
-        'iGPSPORT web login failed: HTTP ${response.statusCode}',
-      );
-    }
-    final payload = response.jsonBody();
-    final code = jsonGetCi(payload, 'code');
-    if (code != 0 && code != '0') {
-      throw StateError('iGPSPORT web login failed: $payload');
-    }
-    await _persistWebCookiesToDisk();
-  }
-
-  Future<void> _persistWebCookiesToDisk() async {
-    final cookieMap = _webSession.cookies;
-    if (cookieMap.isEmpty) return;
-    await _webCookieFile.parent.create(recursive: true);
-    await _webCookieFile.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(cookieMap),
-    );
-  }
-
-  Future<void> _restoreWebCookiesFromDisk() async {
-    if (!await _webCookieFile.exists()) return;
-    try {
-      final decoded = jsonDecode(await _webCookieFile.readAsString());
-      if (decoded is! Map) return;
-      final normalized = <String, String>{
-        for (final entry in decoded.entries)
-          entry.key.toString(): entry.value.toString(),
-      };
-      _webSession.replaceCookies(normalized);
-    } catch (_) {
-      return;
     }
   }
 }
