@@ -1,0 +1,24 @@
+name: Keep Scheduled Workflows Enabled
+
+# GitHub disables scheduled workflows after a period of repository inactivity.
+# Re-enabling them through the API resets that timer without dummy commits.
+on:
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+
+    steps:
+      - name: Re-enable scheduled workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for workflow in sync.yaml keepalive.yaml; do
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/${workflow}/enable"
+            echo "Enabled ${workflow}"
+          done
