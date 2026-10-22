@@ -23,7 +23,9 @@ Future<int> run(List<String> arguments) async {
         ..addOption(
           'state-file',
           defaultsTo: 'sync_state.json',
-          help: 'Deprecated and ignored (state-file based dedupe is disabled)',
+          help:
+              'File mapping Garmin routes to synced iGPSPORT roadbooks '
+              '(used to re-sync changed or renamed routes)',
         )
         ..addOption(
           'garmin-session-dir',
@@ -69,5 +71,6 @@ Future<int> run(List<String> arguments) async {
     limit: limit,
     dryRun: args.flag('dry-run'),
     sessionDir: args.option('garmin-session-dir') ?? 'garmin_session',
+    stateFile: args.option('state-file') ?? 'sync_state.json',
   );
 }

@@ -63,7 +63,7 @@ jobs:
           LIMIT="${{ inputs.limit || '50' }}"
           DRY_RUN="${{ inputs.dry_run || 'false' }}"
 
-          ARGS=(--limit "$LIMIT" --garmin-session-dir .state/garmin_session --log-level "$LOG_LEVEL")
+          ARGS=(--limit "$LIMIT" --garmin-session-dir .state/garmin_session --state-file .state/sync_state.json --log-level "$LOG_LEVEL")
           if [[ "$DRY_RUN" == "true" ]]; then
             ARGS+=(--dry-run)
           fi
