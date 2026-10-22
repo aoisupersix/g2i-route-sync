@@ -50,7 +50,7 @@ dart run bin/g2i_route_sync.dart --limit 20
 # Check targets without uploading
 dart run bin/g2i_route_sync.dart --dry-run
 
-# Deprecated option (accepted but ignored)
+# Location of the sync state file (default: sync_state.json)
 dart run bin/g2i_route_sync.dart --state-file .state/sync_state.json
 ```
 
@@ -84,7 +84,9 @@ The CLI entrypoint is `bin/g2i_route_sync.dart`, a thin wrapper around the `g2i_
 | `lib/garmin_client.dart` | Garmin Connect authentication engine (port of `garminconnect`) |
 | `lib/garmin_route_client.dart` | `GarminRouteClient` (route listing and download) |
 | `lib/igpsport_client.dart` | `IgpsportClient` (upload, roadbooks, POI, privacy) |
-| `lib/sync.dart` | Route ordering and the sync orchestration |
+| `lib/fingerprint.dart` | Route content fingerprint for change detection |
+| `lib/sync_state.dart` | Sync state file (Garmin route -> iGPSPORT roadbook) |
+| `lib/sync.dart` | Route ordering, sync decisions, and the sync orchestration |
 | `lib/cli.dart` | Argument parsing and `run()` |
 
 Tests for the pure helpers (no network) live under `test/`.
@@ -112,9 +114,16 @@ You must set the following values:
     uploaded title appears.
   - After upload, sets the route to private.
   - Sends extracted GPX POIs to iGPSPORT auxiliary points.
-- Duplicate handling:
-  - No local upload history file is used.
-  - Each run compares against current iGPSPORT roadbooks and skips routes with the same title.
+- Duplicate and change handling:
+  - The state file maps each Garmin route ID to its iGPSPORT roadbook ID,
+    title, and a content fingerprint (SHA-256 of GPX point coordinates and
+    waypoints, ignoring timestamps).
+  - Unchanged routes are skipped.
+  - Renamed or modified routes are uploaded again, and the previous roadbook
+    is deleted via `DELETE /service/web/api/Routes/DeleteRouteWeb`.
+  - Routes missing from the state, or whose roadbook was deleted on iGPSPORT,
+    are matched by title against current roadbooks; uploaded only when no
+    roadbook has the same title.
 
 ## Garmin authentication
 
@@ -138,4 +147,6 @@ unattended/CI runs.
   redirects to `app.igpsport.com`); everything goes through
   `https://prod.en.igpsport.com/service` with Bearer auth.
 - Use `--dry-run` with `LOG_LEVEL=DEBUG` for troubleshooting.
-- `.state` is used for runtime/session artifacts (the Garmin session cache), not for route dedup history.
+- In GitHub Actions, `.state` (the Garmin session cache and the sync state
+  file) is persisted via the Actions cache. If the cache is lost, a route
+  renamed in the meantime leaves its old roadbook behind.

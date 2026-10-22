@@ -8,6 +8,7 @@ environment:
 
 dependencies:
   args: ^2.6.0
+  crypto: ^3.0.7
   dotenv: ^4.2.0
   xml: ^6.5.0
 
