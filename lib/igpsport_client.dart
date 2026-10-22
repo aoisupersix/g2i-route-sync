@@ -348,6 +348,16 @@ class IgpsportClient {
     }
   }
 
+  Future<void> deleteRoute(int roadbookId) async {
+    final response = await _session.request(
+      'DELETE',
+      Uri.parse('$_baseUrl/web/api/Routes/DeleteRouteWeb'),
+      params: {'routeId': '$roadbookId'},
+      timeout: const Duration(seconds: 30),
+    );
+    _requireApiData(response, what: 'DeleteRouteWeb');
+  }
+
   Future<void> setRoutePrivate(int roadbookId, String title) async {
     final payload = {'title': title, 'status': 0, 'id': roadbookId};
     final headers = {
